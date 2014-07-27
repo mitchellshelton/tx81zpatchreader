@@ -39,12 +39,10 @@ if (!$_POST) {
 	$chars = array();
 	preg_match_all("/\w{20}(?=636363323232)/", $patch, $chars);
 
-	foreach($chars as $val) {
-		foreach($val as $key => $voice) {
+	foreach($chars[0] as $key => $voice) {
 			$num = sprintf("%02d.\n", $key+1);
 			$asciiversion = pack("H*" , $voice);
 	    print $num . htmlentities($asciiversion) . '<br />';
-	  }
 	}
 
 }
