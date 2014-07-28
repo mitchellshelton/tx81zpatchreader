@@ -19,7 +19,7 @@ if (!$_POST) {
 } else {
 
 	// Specify out extension
-	$extensions = array("syx");
+	$extensions = array("syx", "SYX");
 	$tempfilename = explode(".", $_FILES["filename"]["name"]);
 	$ext = end($tempfilename);
 
