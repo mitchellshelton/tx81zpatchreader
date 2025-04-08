@@ -5,10 +5,6 @@ session_start();
 // Define our maximum file size
 define('MAX_FILE_SIZE', 200000);
 
-// Generate CSRF token and store it in the session
-$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-$token = $_SESSION['csrf_token'];
-
 // Validate our file
 function isSyxFile($filename, $tmpFile) {
 	$allowedExtensions = ['syx'];
@@ -36,8 +32,12 @@ function isSyxFile($filename, $tmpFile) {
 
 // Display our form
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-		$filename = htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8');
-		echo <<<HTML
+	// Generate CSRF token and store it in the session
+	$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+	$token = $_SESSION['csrf_token'];
+	
+	$filename = htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8');
+	echo <<<HTML
 <form method="post" action="$filename" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="$token">
 	<p>
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 	<input type="submit" name="submit" value="Parse">
 </form>
 HTML;
-		return;
+	return;
 }
 
 // Validate the CSRF token
