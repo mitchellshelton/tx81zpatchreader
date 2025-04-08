@@ -1,63 +1,105 @@
 <?php
+// Start our Session
+session_start();
 
-if (!$_POST) {
+// Define our maximum file size
+define('MAX_FILE_SIZE', 200000);
 
-	// self posting form
-	$filename = $_SERVER["PHP_SELF"];
-	print '<form method="post" action="' . $filename . '" enctype="multipart/form-data">';
+// Generate CSRF token and store it in the session
+$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$token = $_SESSION['csrf_token'];
 
-?>
-  <p>
-  	<label for="filename">Upload a TX81Z compatible sysex file (.syx files only): </label>
-  	<input type="file" name="filename" id="filename" />
-  </p>
-  <input type="submit" name="submit" value="Parse">
-<?php
+// Validate our file
+function isSyxFile($filename, $tmpFile) {
+	$allowedExtensions = ['syx'];
+	$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 
-	print '</form>';
-
-} else {
-
-	// Specify out extension
-	$extensions = array("syx", "SYX");
-	$tempfilename = explode(".", $_FILES["filename"]["name"]);
-	$ext = end($tempfilename);
-
-	// Prevent large or non-syx files from being fed into the system
-	if (in_array($ext, $extensions) && ($_FILES["filename"]["size"] < 200000)) {
-		// Confirm that our file was uploaded
-		if ($_FILES["filename"]["error"] > 0) {
-	  	echo "Error: " . $_FILES["filename"]["error"] . "<br />";
-	  	break;
-		} else {
-	  	echo "Results from " . $_FILES["filename"]["name"] . "<hr />";
-		}
-	} else {
-	  echo "This file is unreadable by this system.";
-	  break;
+	// Check the file extension
+	if (!in_array($ext, $allowedExtensions)) {
+		return false;
 	}
 
-	// Get the location of our uploaded file
-	$filename = $_FILES["filename"]["tmp_name"];
-	// Grab the file contents (note that this converts the hex to ascii automatically)
-	$rawpatch = file_get_contents($filename);
-	// Convert the contents back into hex
-	$patch = bin2hex($rawpatch);
-	// Initialize an array
-	$chars = array();
-	// Get the 20 hex characters before our ccc222 pattern
-	preg_match_all("/\w{20}(?=636363323232)/", $patch, $chars);
-
-	// Loop over the array of voice names
-	foreach($chars[0] as $key => $voice) {
-		// Add a leading zero to the voice names
-		$num = sprintf("%02d.\n", $key+1);
-		// Convert the voice name from hex to ascii
-		$asciiversion = pack("H*" , $voice);
-		// Display the name
-	  print $num . htmlentities($asciiversion) . '<br />';
+	// Check the file size
+	if (filesize($tmpFile) > MAX_FILE_SIZE) {
+		return false;
 	}
 
+	// Check MIME type
+	$finfo = new finfo(FILEINFO_MIME_TYPE);
+	$mimeType = $finfo->file($tmpFile);
+	if ($mimeType !== 'application/octet-stream') {
+		return false;
+	}
+
+	return true;
 }
+
+// Display our form
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+		$filename = htmlspecialchars($_SERVER["PHP_SELF"], ENT_QUOTES, 'UTF-8');
+		echo <<<HTML
+<form method="post" action="$filename" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="$token">
+	<p>
+		<label for="filename">Upload a TX81Z compatible sysex file (.syx files only): </label>
+		<input type="file" name="filename" id="filename" accept=".syx" />
+	</p>
+	<input type="submit" name="submit" value="Parse">
+</form>
+HTML;
+		return;
+}
+
+// Validate the CSRF token
+if (!isset($_POST['csrf_token'], $_SESSION['csrf_token']) || 
+	!hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+	echo "Invalid CSRF token.";
+	return;
+}
+
+// Validate file upload
+if (!isset($_FILES['filename']) || $_FILES['filename']['error'] !== UPLOAD_ERR_OK) {
+	echo "File upload error.";
+	return;
+}
+
+$upload = $_FILES["filename"];
+$originalName = basename($upload["name"]);
+$tmpFile = $upload["tmp_name"];
+
+if (!isSyxFile($originalName, $tmpFile)) {
+	echo "This file is unreadable by this system.";
+	return;
+}
+
+echo "Results from " . htmlentities($originalName, ENT_QUOTES, 'UTF-8') . "<hr />";
+
+// Read and parse the file
+$rawpatch = file_get_contents($tmpFile);
+$patch = bin2hex($rawpatch);
+
+preg_match_all("/\w{20}(?=636363323232)/", $patch, $matches);
+
+if (empty($matches[0])) {
+	echo "No voice names found in this sysex file.";
+	// Invalidate the CSRF token after use
+	unset($_SESSION['csrf_token']);
+	return;
+}
+
+foreach ($matches[0] as $index => $voice) {
+	$num = sprintf("%02d.\n", $index + 1);	
+	
+	if (ctype_xdigit($voice) && strlen($voice) % 2 === 0) {
+		$asciiversion = htmlentities(pack("H*", $voice), ENT_QUOTES, 'UTF-8');
+	} else {
+		$asciiversion = '[Invalid Hex]';
+	}	
+	echo $num . $asciiversion . "<br />";
+}
+
+// Invalidate the CSRF token after use
+unset($_SESSION['csrf_token']);
+session_regenerate_id(true);
 
 ?>
